@@ -1,0 +1,9 @@
+CONVERTING TYPES
+	INT TO FLOAT
+		we can use the float_of_int function to go from int to float
+	FLOAT TO INT
+		we cna use the int_of_float function to go from float to int
+
+FUNCTIONS HAVE TYPES
+	you can think of a variable (or binding) as a function that takes no inputs,
+	and functions as variables that do have inputs.

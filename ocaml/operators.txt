@@ -1,0 +1,17 @@
+INTEGER OPERATORS
+	we have the regular +, *, /, - mathematical operators for integers.
+	there is no integer exponentiation operator
+	
+FLOATING POINT OPERATORS
+	we must add a period for floating points, meaning +., *., /., -.
+	we also have ** which does not require a point. It is used for exponentiation
+STRING OPERATORS
+	we can do "str1" ^ "str2" to concatenate strings
+
+PIPE OPERATORS |> <|
+	|> is known as the forward pipe and can be used to chain together functions. Take the following example which exponentiates integers by 
+	converting the base and exponents to floats, and pipes the result back to an int
+	
+		let exp_int base exponent = float_of_int base ** float_of_int exponent |> int_of_float
+			(* as we can see, we convert base and exponent to floats, exponentiate them, and pipe the result to the int_of_float number to return an int *)
+
