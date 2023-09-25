@@ -68,7 +68,13 @@ let rev (l : 'a list) : 'a list =
 (* DEMO: Higher-order functio with option as return type *)
 
 let rec find (p : 'a -> bool) (xs : 'a list) : 'a option =
-  
+  match xs with
+  | [] -> None 
+  | x :: xs ->
+    if p x then Some x
+    else find p xs 
+
+
 
 
 
