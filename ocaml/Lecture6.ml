@@ -74,6 +74,26 @@ let rec find (p : 'a -> bool) (xs : 'a list) : 'a option =
     if p x then Some x
     else find p xs 
 
+type 'b church = ('b -> 'b) -> 'b -> 'b
+
+let to_int (n : int church) : int =
+  let succ acc = acc + 1 in
+  n succ 0
+  
+(* these church numbers are higher order functions which take two inputs.
+    > The first input is a function of type ('b -> 'b)
+    > The second input is a value of 'b. 
+    > finally, it returns something of type 'b
+    >>> this is why we have "type 'b church = ('b -> 'b) -> 'b -> 'b"
+   In the to_int function, we are defining a helper function called succ, which takes as input 
+   an accumulator (which is an integer), and returns the successor of said integer. I.E., it is 
+   a function from (int -> int). Therefore, 'b is an int in the context of the to_int function.
+
+   The magic happens when we write "in n succ 0"
+   'n' here is a FUNCTION of type "int church", which takes as input the function succ (int -> int), and
+   an initial accumulator of 0 (also an int) and returns an int. I.E. (int -> int) -> int -> int.
+*)
+
 
 
 
