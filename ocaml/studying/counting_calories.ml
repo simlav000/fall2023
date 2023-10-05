@@ -15,11 +15,11 @@
    a function that can operate on an arbitrary list length.
 *)
 
-let sum_list (l: int list) : int = 
+let rec sum_list (l: int list) : int = 
   let rec help l acc =
     match l with 
     | [] -> acc 
-    | e :: l -> help l length (acc + e)
+    | e :: l -> help l (acc + e)
   in help l 0
 
 (*
@@ -27,8 +27,20 @@ let sum_list (l: int list) : int =
    when there are no more lists to process
 *)
 
-let parse_lists (biglist: int list list): int =
+let parse_lists (biglist: int list list): int list =
+  (* turn a list of lists into a list of sums of the elements of the inner list *)
   let rec help biglist totals = 
     match biglist with 
     | [] -> totals
-    | sl :: l -> 
+    | sl :: l -> help biglist (sum_list sl :: totals)
+  in help biglist []
+
+let find_max list = 
+  let rec remember list max =
+   match list with 
+    | [] -> max
+    | e :: list -> remember list (if e > max then e else max)
+  in remember list 0
+
+let count_calories biglist =
+  find_max (parse_lists biglist)
