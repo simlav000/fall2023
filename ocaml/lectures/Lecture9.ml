@@ -130,9 +130,73 @@ type 'a list =
   Instead of invinite data, we put _observations_ 
 *)
 
+type 'a susp = Susp of (unit -> 'a)
+
+let mk_susp (f: unit -> 'a) : 'a susp = Susp f 
+
+let force (Susp f: 'a susp) : 'a = f ()
+
 type 'a stream = 
-  | Next of 'a * (unit -> 'a stream)
+  | Next of 'a * 'a stream susp
 
-(* we can observe on-demand: *)
+let rec ones () = Next (1, mk_susp (fun () -> ones ()))
 
-let tl (Next (_,f)) = f ()
+(* Head function: Observe head of stream. I.e. get first element *)
+let hd (str: 'a stream) : 'a = 
+  match str with 
+  | Next (x, _) -> x
+
+(* Tail function: Observe tail of stream. I.e. get rest of stream *)
+let tl (str: 'a stream) : 'a stream = 
+  match str with 
+  | Next (_, susp) -> force susp
+
+let rec take (n: int) (str: 'a stream) : 'a list = 
+  match n, str with 
+  | n, _ when n <= 0 -> []
+  | n, Next (x, susp) -> x :: take (n-1) (force susp)
+
+let get_ones n = take n (ones ())
+
+let rec mk_nats (n: int) = Next (n, mk_susp (fun () -> mk_nats (n+1)))
+let nats = mk_nats 0
+
+(* want to be able to use some version of "map", maybe "mapi" (map-index) that takes 
+   an int (index) and the element, and does some work
+   mapi: ((int * 'a ) -> 'b) -> 'a list -> 'b list 
+   But we can do something clever. We already have a map function which can transform a 'a -> 'b
+   We can maybe extract some 'a to be int * 'a such that each element is attached to its index
+   Then this mapi function is just map
+   Instead of lists let's work with streams
+   We already have an inifinite stream of natural numbers. This can represent all possible indices.
+   What we really want is a way to take two steams: The 'a stream we care about and the stream of naturals, 
+   and zip them together pair-wise. *)
+
+let rec zip (xs: 'a stream) (ys: 'b stream) : ('a * 'b) stream = 
+  Next ((hd xs, hd ys), mk_susp (fun () -> zip (tl xs) (tl ys)))
+
+(* Now, I can take two streams, not knowing how many elements of each stream the user may need, 
+   and produce a list of both streams paired element-wise. For use in grouping the elements of 
+   one stream with some index, I always know I can provide an index, no matter how many the user 
+   may need (unless the reach a stack overflow due to "take" not being tail-recusrive) 
+   
+   I can now write something like 
+   let ix_ones = zip nats (ones ())
+   and be able to call this function with however many indexed ones that I need
+   >> take 10 ix_ones;;
+   -: (int * int) list = [(0,1); (1,1); (2,1); ...]
+
+   In a lazy language, we could do this with lists. Maybe the lists stop eventually, but we can write 
+   and index function that never has to check how long the input list is. it just takes an infinite list 
+   of natural numbers, and just zips them together until the input list runs out. 
+   *)
+
+(* BLACK MAGIC: FIBONACCI STREAM *)
+
+let rec zip_with (f : 'a -> 'b -> 'c) (xs: 'a stream) (ys: 'b stream) : 'c stream =
+  Next (f (hd xs) (hd ys), mk_susp (fun () -> zip_with f (tl xs) (tl ys)))
+
+let zip_made_with_zip_with xs ys = zip_with (fun x y -> (x,y)) xs ys
+
+let rec fibs () = Next (0, mk_susp fibs1)
+and    fibs1 () = Next (1, mk_susp (fun () -> zip_with (+) (fibs ()) (fibs1 ())))
