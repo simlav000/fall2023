@@ -181,14 +181,164 @@ let rec show_mylist : 'a mylist -> string = function
   | Cons(x, xs) -> "Cons(" ^ string_of_int x ^ ", " ^ show_mylist xs ^ ")"
 
 
-(*
-let rec rev (l: 'a mylist) : 'a mylist =
-  fold_left (fun x acc ->
-    let result = Cons(x, acc) in
-    (* Print the values of x and acc *)
-    print_endline ("x: " ^ string_of_int x ^ ", acc: " ^ show_mylist acc);
-    result
-  ) l Nil
+(* for_all : ('a -> bool) -> 'a mylist -> bool *)
+  (* `for_all p l` = true
+     if and only if every element of `l` satisfies `p`.
+     That is, for all `x` in `l`, we have `p x` is true.
+
+     Hint: start by thinking about whether `for_all p Nil` should be
+     true or false.
+
+     Implement this function in terms of fold_right.
+
+     Rank: **
+   *)
+
+let for_all (p: 'a -> bool) (l: 'a mylist) : bool =
+  let rec for_all' p l (result: bool) = 
+    match l, result with 
+    | Nil, _ -> true 
+    | Cons(x,l'),_ -> 
+      if p x then for_all' p l' true 
+      else false 
+    in for_all' p l true
+
+(* now let's do it in terms of fold_right *)
+let for_all_fold (p: 'a -> bool) (l: 'a mylist) : bool =
+  fold_right (fun x acc -> p x && acc) l true
+
+(* exists : ('a -> bool) -> 'a mylist -> bool *)
+(* `exists p l` is true
+    if and only if
+    there is some x in l such that p x is true.
+
+    Hint: start by thinking about whether `exists p Nil` should be
+    true or false.
+
+    Rank: **
+  *)
+
+(*let exists (p: 'a -> bool) (l: 'a mylist) : bool = 
+  let rec exists' p l result = 
+    match l, result with 
+    | Nil -> false 
+    | (Cons (x, l'), _) -> *)
+
+(*      
+     Let's try to re-write append.
+     Notice in that implementation that the second
+     list is only needed at the very end.
+     This suggests that we can use partial evaluation to construct a
+     non-recursive function that just waits for the second list.
+
+     Implement the function
+     app_gen : 'a list -> 'a list -> 'a list
+     such that
+     app_gen l1 computes a non-recursive function f
+     such that
+     f l2 computes the concatenation of l1 and l2.
+
+     Rank: *
 *)
 
+(* Let's talk about code generation / partial evaluation. *)
+
+(* The canonical example: pow
+
+    We can calculate n^k using a simple recursive program.
+*)
+
+let rec pow k n =
+  if k = 0 then 1
+  else pow (k-1) n * n
+
+(* Rewrite this function so it performs partial evaluation.
+
+    That is, implement the function
+    pow_gen : int -> int -> int
+    such that
+    pow_gen k computes a NON-RECURSIVE function f
+    such that
+    f n computes n^k
+
+    In other words, the function f that is returned must not contain
+    a recursive call to pow_gen.
+    By the way, this rules out the putative answer
+    pow_gen k = pow k
+    by just partially applying pow !
+
+    Rank: *
+*)
+
+let rec pow_gen (k: int) : (int -> int) = 
+  if k = 0 then fun _ -> 1
+  else 
+    fun n -> n * (pow_gen (k-1) n)
+(*      ^ this n is the next argument we will be giving it later 
+*)
+
+(* 
+  now so something similar with append.
+  we can use partial evaluation to construct a
+  non-recursive function that just waits for the second list.
+
+  Implement the function
+  app_gen : 'a list -> 'a list -> 'a list
+  such that
+  app_gen l1 computes a non-recursive function f
+  such that
+  f l2 computes the concatenation of l1 and l2.
+
+  Rank: *
+*)
+(*
+let rec append (l1: 'a mylist) (l2: 'a mylist) : 'a mylist =
+  match l1 with 
+  | Nil -> l2 
+  | Cons (x, l1') -> Cons (x, append l1' l2)
+*)
+
+let rec app_gen (l1: 'a list) : ('a list -> 'a list) =
+  match l1 with 
+  | [] -> (fun l2 -> l2)
+  | x :: l1' -> (fun l2 -> x :: (app_gen l1' l2))
+
+(* Consider a type of binary tree. *)
+type 'a tree =
+  | Empty
+  | Node of 'a tree * 'a * 'a tree
+
+type 'a bst = (int * 'a) tree
+
+(* In this problem, we consider a binary SEARCH tree, so the
+    elements are ordered.
+    That is, for any tree t = Node (l, (k, v), r)
+    we have that every key k' in l is LESS THAN (or equal) k
+    and every key k' in r in GREATER THAN (or equal) k.
+
+    First, implement the function
+    insert : 'a bst -> int -> 'a -> 'a bst
+    such that
+    insert t k v
+    inserts the value v with the key k in the BST t.
+    This should overwrite any previous value associated with k in the BST.
+
+    Rank: *
+  *)
+
+let rec insert (tree:'a bst) (key: int) (value: 'a) :'a bst = 
+  match tree with
+  |Empty -> Node (Empty, (key, value), Empty)
+  |Node (l,(k,v), r) -> 
+      if k = key then (Node (l, (k, value),r)) else
+      if k > key then (Node (insert l key value, (k,v), r)) else 
+        (Node (l,(k,v), insert r key value)) 
+
+let rec insert_tr tree key value return =
+  match tree with 
+  | Empty -> return (Node (Empty, (key, value), Empty))
+  | Node (l, (k,v), r) ->
+    if k = key then return (Node (l, (k, value) , r)) else
+    if k > key then insert_tr l key value (fun leftResult -> return (Node (leftResult, (k,v), r)))
+    else insert_tr r key value (fun rightResult -> return (Node (l, (k,v), rightResult)))
 

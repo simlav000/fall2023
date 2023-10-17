@@ -156,7 +156,7 @@ let example2 = Node ( Node ( Empty,
 
 (* the implementation of find_tr is somewhat worse than the original one. Here's an improvement we can make *)                    
 
-let rec find_best (p: 'a -> bool) (t: 'a tree) (fail: unit -> 'r) (succeed: 'a -> 'r): 'r =
+let rec find_cps (p: 'a -> bool) (t: 'a tree) (fail: unit -> 'r) (succeed: 'a -> 'r): 'r =
   match t with 
   | Empty -> fail ()
   | Node (l, x, r) ->
