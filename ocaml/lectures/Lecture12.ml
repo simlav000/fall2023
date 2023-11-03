@@ -32,7 +32,7 @@ let rec fact_tr (n: int) (acc: int) : int =
   | 0 -> acc
   | _ -> fact_tr (n-1) (n * acc)
 
-(*) Theorem 5: fact n = fact tr n 1
+Theorem 5: fact n = fact tr n 1
 
 Proof: Induction on n 
 
