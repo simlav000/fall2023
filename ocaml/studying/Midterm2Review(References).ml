@@ -225,13 +225,14 @@ type counter_object =
 {
   tick: unit -> int;
   reset: unit -> unit;
+  start: int
 }
 
-let newCounter () = 
-  let counter = ref 0 in 
+let newCounter (start : int) = 
+  let counter = ref start in 
   {
     tick = (fun () -> counter := !counter + 1; !counter);
-    reset = (fun () -> counter := 0)
+    reset = (fun () -> counter := start)
   }
 
 (*
