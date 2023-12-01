@@ -133,3 +133,5 @@
     3) Add [ τ / α ] to the solution
 
 *)
+
+let z = (fun x -> fun y -> x)

@@ -235,3 +235,315 @@ let ex = If (
   )
 
 let parse (input : string) : exp option = failwith "Exercise"
+
+exception NotImplemented
+
+(* Types in MiniCAML *)
+(* We extend types to support variables. *)
+type tp =
+  | Pair of tp * tp
+  | Arrow of tp * tp
+  | Int
+  | Bool
+  | TVar of string 
+
+module TVarMap = Map.Make (String)
+
+(* Different errors that can arise during unification. *)
+type unif_error =
+  (* Raised when attempting to unify a type variable 'a with a type t
+     of which 'a is a subexpression, e.g. t is UArrow (UInt, 'a) *)
+  | UnifOccursCheckFails
+  (* Raised when the unifier attempts to unify mismatched types,
+     e.g. Bool with Int, an Arrow with a Bool,
+     or two Arrows with mismatched argument lengths. *)
+  | UnifTypeMismatch of tp (* LHS *) * tp (* RHS *)
+
+(* An exception constructor so that we can raise unif_error values. *)
+exception UnifError of unif_error
+
+(* Convenience function for raising unif_error values. *)
+let unif_error e = raise (UnifError e)
+
+(* Convenience function for raising type mismatch errors *)
+let type_mismatch lhs rhs =
+  unif_error (UnifTypeMismatch (lhs, rhs))
+
+(* Used for variables, aka "identifiers" *)
+type name = string
+
+(* The primitive operations available in MiniCAML *)
+type primop = Equals | LessThan | Plus | Minus | Times | Negate | Comma
+
+(* Expressions in MiniCAML *)
+type exp =
+  | I of int                           (* 0 | 1 | 2 | ... *)
+  | B of bool                          (* true | false *)
+  | If of exp * exp * exp              (* if e then e1 else e2 *)
+  | Primop of primop * exp list        (* e1 <op> e2  or <op> e *)
+  | Fn of name * exp                   (* fn x => e *)
+  | Rec of name * exp                  (* rec f => e *)
+  | Let of name * exp * exp            (* let x = e1 in e2 end *)
+  | LetPair of name * name * exp * exp (* let (x1, x2) = e1 in e2 end*)
+  | Apply of exp * exp                 (* e (e_1, e_2, ..., e_n) *)
+  | Var of name                        (* x *)
+
+(* Some example programs in MiniCAML. *)
+(* fun t => let (x, y) = t in (x * x) + (y * y) *) 
+let ex1 = Fn ("t", LetPair ("x", "y", Var "t", 
+                            Primop (Plus, [Primop (Times, [Var "x"; Var "x"]); 
+                                           Primop (Times, [Var "y"; Var "y"])])))
+
+(* fun x => true *)
+let ex2 : exp = Fn ("x", B true)
+
+(* let f = (fun t => let (x, y) = t in (x * x) + (y * y))
+   in
+   f (3, 4) *)
+let ex3 : exp =
+  Let ("f", ex1, 
+       Apply (Var "f", Primop (Comma, [I 3; I 4])))
+
+(* let g = (fun x => true)
+   in
+   g 0 *)
+let ex4 : exp =
+  Let ("g", ex2,
+       Apply (Var "g", I 0))
+
+(* let f = (fun (x, y) => (x * x) + (y * y))
+   in
+   f (3)
+   Note: this expression is syntactically valid, but ill-typed!
+*)
+let ex5 : exp =
+  Let ("f", ex1,
+       Apply (Var "f", I 3))
+
+(* let f = (fun (x) => (fun (y) => (x * x) + (y * y)))
+   in
+   (f (3)) (4)
+*)
+let ex6 : exp =
+  Let ("f",
+       Fn ("x",
+           Fn ("y",
+               Primop (Plus,
+                       [Primop (Times, [Var "x"; Var "x"]);
+                        Primop (Times, [Var "y"; Var "y"])]))),
+       Apply (Apply (Var "f", I 3),
+              I 4))
+
+(* let f = (fun (x) => (fun (y) => (x * x) + (y * y)))
+   in
+   f (3, 4)
+   Note: this expression is syntactically valid, but ill-typed!
+*)
+let ex7 : exp =
+  Let ("f",
+       Fn ("x",
+           Fn ("y",
+               Primop (Plus,
+                       [Primop (Times, [Var "x"; Var "x"]);
+                        Primop (Times, [Var "y"; Var "y"])]))),
+       (Apply (Var "f", Primop (Comma, [I 3; I 4]))))
+
+(* PART 1: eval *)
+
+(* Substitution functions similar to HW9 are in scope as the values:
+   [val subst : exp * name -> exp -> exp]
+   [val subst_list : (exp * name) list -> exp -> exp]
+*)
+
+(* Runtime errors that may be raised by eval. *)
+type runtime_error =
+  | Free_variable of name
+  | Bad_primop_args
+  | If_non_true_false
+  | Apply_non_fn
+  | LetPair_non_tuple
+
+exception Stuck of runtime_error
+
+
+(* Evaluates a primitive operation *)
+let eval_op (op : primop) (exps : exp list) : exp option =
+  match op, exps with
+  | (Equals,   [I i; I i']) -> Some (B (i = i'))
+  | (LessThan, [I i; I i']) -> Some (B (i < i'))
+  | (Plus,     [I i; I i']) -> Some (I (i + i'))
+  | (Minus,    [I i; I i']) -> Some (I (i - i'))
+  | (Times,    [I i; I i']) -> Some (I (i * i'))
+  | (Negate,   [I i])       -> Some (I (-i))
+  | (Comma,    [I i; I i']) -> Some (Primop (Comma, exps))
+  | _                       -> None
+
+(* PART 2: unify *)
+
+let rec apply_type_substitution (subst : tp TVarMap.t) (tp : tp) : tp =
+  match tp with
+  | Int | Bool -> tp
+  | Arrow (t,t') ->
+      Arrow (apply_type_substitution subst t, apply_type_substitution subst t')
+  | Pair (t, t') ->
+      Pair (apply_type_substitution subst t, apply_type_substitution subst t')
+  | TVar v ->
+      match TVarMap.find_opt v subst with
+      | None -> tp
+      | Some t -> t
+
+let rec string_of_tp (subst : tp TVarMap.t) (tp : tp) : string =
+  match tp with
+  | Arrow (t, t') -> "(" ^
+                     (string_of_tp subst t) ^
+                     " -> " ^ 
+                     (string_of_tp subst t') ^ ")"
+  | Pair (t, t') -> "(" ^
+                    (string_of_tp subst t) ^
+                    ", " ^ 
+                    (string_of_tp subst t') ^ ")"
+  | Int -> "int"
+  | Bool -> "bool"
+  | TVar v ->
+      match TVarMap.find_opt v subst with
+      | None -> "'" ^ v
+      | Some tp -> string_of_tp subst tp
+
+let string_of_type_substitution (type_substitution : tp TVarMap.t) : string =
+  "[\n"
+  ^ (TVarMap.fold (fun key value acc ->
+      acc ^ "  " ^ (string_of_tp type_substitution value) ^ " / '" ^ key ^ ",\n"
+    ) type_substitution "")
+  ^ "]"
+
+let print_tp tp = print_string @@ string_of_tp TVarMap.empty tp
+
+let print_type_substitution subst = print_string @@ string_of_type_substitution subst
+
+(* PART 3: infer *)
+
+(* Type contexts *)
+module Context = Map.Make(String)
+type context = tp Context.t
+let empty = Context.empty
+
+(* Looks up the topmost x in ctx and return an option. *)
+let lookup (x : name) (ctx : context) = Context.find_opt x ctx
+
+(* Adds a new type ascription to a context. *)
+let extend ctx (x, tau) = Context.add x tau ctx
+
+(* Adds multiple new type ascriptions to a context. *)
+let extend_list (ctx : context) (l : (name * tp) list) =
+  List.fold_left extend ctx l
+
+(* Type errors that may be raised by infer *)
+type type_error =
+  | Free_variable of name
+
+exception TypeError of type_error
+
+let free_variable name = raise (TypeError (Free_variable name))
+
+(* Computes the type of a primitive operation.
+   The result is a tuple representing the domain and range of the primop.
+*)
+let primopType (p : primop) : tp list * tp = match p with
+  | Equals   -> ([Int; Int], Bool)
+  | LessThan -> ([Int; Int], Bool)
+  | Plus     -> ([Int; Int], Int)
+  | Minus    -> ([Int; Int], Int)
+  | Times    -> ([Int; Int], Int)
+  | Negate   -> ([Int], Int)
+  | Comma    -> ([Int; Int], Pair (Int, Int))
+
+
+(* -------------------------------------------------------------*)
+(* Other helper functions                                       *)
+(* You don't need to look at these to do the assignment, but it *)
+(* would be a good idea to understand them.                     *)
+(* -------------------------------------------------------------*)
+
+(* Generating fresh (new) variable names *)
+type gen_var = {
+  fresh : name -> name; (* generates a fresh name based on a given one. *)
+  reset : unit -> unit (* resets the internal counter for making names. *)
+}
+
+let gen_var : gen_var =
+  let counter = ref 0 in
+  let fresh x = incr counter; x ^ (string_of_int (!counter)) in
+  let reset () = counter := 0 in
+  {fresh; reset}
+
+(* Use this function to generate fresh vars. *)
+let fresh_var = gen_var.fresh
+let reset_ctr = gen_var.reset
+
+(* String representations of expressions. Useful for debugging!
+   Note that this expression printer is very primitive, but it should suit
+   your needs most of the time.
+*)
+let nl_sep l = String.concat "\n" l
+
+let bracket str = "(" ^ str ^ ")"
+
+let string_of_op p = match p with
+  | Equals   -> " = "
+  | LessThan -> " < "
+  | Plus     -> " + "
+  | Minus    -> " - "
+  | Times    -> " * "
+  | Negate   -> "-"
+  | Comma    -> ", "
+
+let rec string_of_exp indent exp =
+  let new_ind = indent ^ "  " in
+  let string_of_exp' = string_of_exp indent in
+  let string_of_exp'' = string_of_exp new_ind in
+  match exp with
+  | I n ->
+      if n < 0 then bracket (string_of_int n)
+      else string_of_int n
+  | B b -> if b then "True" else "False"
+  | If (p, e1, e2) ->
+      nl_sep
+        ["if " ^ (string_of_exp'' p) ^ " then";
+         new_ind ^ (string_of_exp'' e1);
+         indent ^ "else";
+         new_ind ^ (string_of_exp'' e2)]
+  | Primop (p, el) ->
+      bracket @@
+      if p = Negate then
+        (string_of_op p) ^ (string_of_exp' (List.nth el 0))
+      else if p = Comma then
+        "(" ^ (string_of_exp' (List.nth el 0)) ^
+        (string_of_op p) ^
+        (string_of_exp' (List.nth el 1)) ^ ")"
+      else
+        (string_of_exp' (List.nth el 0)) ^
+        (string_of_op p) ^
+        (string_of_exp' (List.nth el 1))
+  | Fn (name, exp) -> 
+      bracket @@
+      nl_sep
+        ["fun (" ^ name ^ ") =>";
+         new_ind ^ (string_of_exp'' exp)]
+  | Rec (name, exp) ->
+      bracket @@
+      nl_sep
+        ["rec (" ^ name ^ ") =>";
+         new_ind ^ (string_of_exp'' exp)]
+  | Let (name, e1, e2) ->
+      nl_sep
+        ["let " ^ name ^ " = " ^ (string_of_exp' e1) ^ " in";
+         new_ind ^ (string_of_exp'' e2)]
+  | Apply (f, e) -> 
+      (string_of_exp' f) ^ " " ^ (string_of_exp' e)
+  | LetPair (x1, x2, e1, e2) ->
+      nl_sep
+        ["let (" ^ x1 ^ ", " ^ x2 ^") = " ^ (string_of_exp' e1) ^ " in";
+         new_ind ^ (string_of_exp' e2)]
+  | Var name -> name
+
+let print_exp exp = print_string (string_of_exp "" exp)
